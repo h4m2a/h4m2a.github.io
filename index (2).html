@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+
+<!-- ═══════════════════════════════════════════════════════════════
+  FIREBASE SDK  (real-time cross-device sync)
+════════════════════════════════════════════════════════════════ -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+<style>
+:root {
+--bg: #F4F3EF;
+--surface: #FFFFFF;
+--border: #E5E2D9;
+--text: #1A1917;
+--text-soft: #7C7570;
+--accent: #2D6A4F;
+--accent-hover: #235c43;
+--accent-light: #D8F3E8;
+--math: #5B21B6;
+--math-light: #EDE9FE;
+--acct: #075985;
+--acct-light: #E0F2FE;
+--btec: #92400E;
+--btec-light: #FEF3C7;
+--danger: #B91C1C;
+--success: #15803D;
+--radius: 12px;
+--shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+--shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+font-family: 'DM Sans', sans-serif;
+background: var(--bg);
+color: var(--text);
+min-height: 100vh;
+font-size: 15px;
+line-height: 1.5;
+}
+
+/* ─── LOADING OVERLAY ─────────────────────── */
+#loading-overlay {
+position: fixed;
+inset: 0;
+background: var(--bg);
+z-index: 9999;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+gap: 14px;
+font-family: 'DM Sans', sans-serif;
+color: var(--text-soft);
+font-size: 14px;
+transition: opacity 0.3s;
+}
+#loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.loader-spinner {
+width: 32px; height: 32px;
+border: 3px solid var(--border);
+border-top-color: var(--accent);
+border-radius: 50%;
+animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── FIREBASE ERROR BANNER ───────────────── */
+#firebase-error {
+display: none;
+background: #FEE2E2;
+border: 1px solid #FECACA;
+color: var(--danger);
+font-size: 13px;
+padding: 10px 16px;
+text-align: center;
+line-height: 1.5;
+}
+#firebase-error a { color: var(--danger); font-weight: 600; }
+
+/* ─── HEADER ─────────────────────────────── */
+header {
+background: var(--surface);
+border-bottom: 1px solid var(--border);
+position: sticky;
+top: 0;
+z-index: 100;
+box-shadow: var(--shadow);
+}
+
+.header-inner {
+max-width: 1120px;
+margin: 0 auto;
+padding: 0 24px;
+display: flex;
+align-items: center;
+justify-content: space-between;
+height: 58px;
+}
+
+.logo {
+font-family: 'Syne', sans-serif;
+font-weight: 800;
+font-size: 20px;
+letter-spacing: -0.5px;
+color: var(--text);
+}
+.logo em { color: var(--accent); font-style: normal; }
+
+.header-right {
+display: flex;
+align-items: center;
+gap: 14px;
+}
+
+#header-date {
+font-size: 12px;
+color: var(--text-soft);
+font-weight: 400;
+}
+
+/* ─── SYNC INDICATOR ──────────────────────── */
+#sync-status {
+display: flex;
+align-items: center;
+gap: 5px;
+font-size: 11px;
+font-weight: 500;
+color: var(--text-soft);
+transition: color 0.2s;
+white-space: nowrap;
+}
+#sync-dot {
+width: 7px; height: 7px;
+border-radius: 50%;
+background: var(--border);
+flex-shrink: 0;
+transition: background 0.2s;
+}
+#sync-status.syncing #sync-dot { background: #FBBF24; animation: pulse 0.9s infinite; }
+#sync-status.saved   #sync-dot { background: var(--success); }
+#sync-status.error   #sync-dot { background: var(--danger); }
+#sync-status.syncing { color: #92400E; }
+#sync-status.saved   { color: var(--success); }
+#sync-status.error   { color: var(--danger); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ─── NAV ─────────────────────────────────── */
+nav {
+background: var(--surface);
+border-bottom: 1px solid var(--border);
+overflow-x: auto;
+scrollbar-width: none;
+}
+nav::-webkit-scrollbar { display: none; }
+
+.nav-inner {
+max-width: 1120px;
+margin: 0 auto;
+padding: 0 20px;
+display: flex;
+gap: 2px;
+}
+
+.nav-btn {
+padding: 11px 18px;
+font-family: 'DM Sans', sans-serif;
+font-size: 14px;
+font-weight: 500;
+color: var(--text-soft);
+background: none;
+border: none;
+border-bottom: 2.5px solid transparent;
+cursor: pointer;
+white-space: nowrap;
+transition: color 0.15s, border-color 0.15s;
+display: flex;
+align-items: center;
+gap: 6px;
+}
+.nav-btn:hover { color: var(--text); }
+.nav-btn.active {
+color: var(--accent);
+border-bottom-color: var(--accent);
+font-weight: 600;
+}
+
+/* ─── MAIN ────────────────────────────────── */
+main {
+max-width: 1120px;
+margin: 0 auto;
+padding: 28px 24px 60px;
+}
+
+.section { display: none; animation: fadeIn 0.18s ease; }
+.section.active { display: block; }
+
+@keyframes fadeIn {
+from { opacity: 0; transform: translateY(4px); }
+to { opacity: 1; transform: translateY(0); }
+}
+
+.page-title {
+font-family: 'Syne', sans-serif;
+font-weight: 800;
+font-size: 28px;
+letter-spacing: -0.5px;
+margin-bottom: 22px;
+}
+
+/* ─── CARD ────────────────────────────────── */
+.card {
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: var(--radius);
+padding: 20px;
+box-shadow: var(--shadow);
+}
+
+/* ─── FORM ELEMENTS ───────────────────────── */
+input[type="text"],
+input[type="date"],
+input[type="number"],
+select {
+width: 100%;
+padding: 9px 12px;
+border: 1px solid var(--border);
+border-radius: 8px;
+font-family: 'DM Sans', sans-serif;
+font-size: 14px;
+color: var(--text);
+background: var(--bg);
+outline: none;
+transition: border-color 0.15s, box-shadow 0.15s;
+-webkit-appearance: none;
+}
+input:focus, select:focus {
+border-color: var(--accent);
+box-shadow: 0 0 0 3px rgba(45,106,79,0.1);
+}
+
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-label { font-size: 12px; color: var(--text-soft); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+
+.btn {
+display: inline-flex;
+align-items: center;
+justify-content: center;
+gap: 6px;
+padding: 9px 18px;
+border-radius: 8px;
+border: none;
+font-family: 'DM Sans', sans-serif;
+font-size: 14px;
+font-weight: 500;
+cursor: pointer;
+transition: all 0.15s;
+white-space: nowrap;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-ghost {
+background: transparent;
+color: var(--text-soft);
+border: 1px solid var(--border);
+}
+.btn-ghost:hover { background: var(--bg); color: var(--text); }
+.btn-icon {
+background: none;
+border: none;
+cursor: pointer;
+color: var(--text-soft);
+padding: 4px 6px;
+border-radius: 6px;
+font-size: 14px;
+line-height: 1;
+transition: background 0.15s, color 0.15s;
+}
+.btn-icon:hover { background: var(--bg); color: var(--danger); }
+
+/* ─── SUBJECT TAGS ────────────────────────── */
+.subject-tag {
+padding: 2px 8px;
+border-radius: 20px;
+font-size: 11px;
+font-weight: 600;
+letter-spacing: 0.2px;
+}
+.tag-Mathematics { background: var(--math-light); color: var(--math); }
+.tag-Accounting { background: var(--acct-light); color: var(--acct); }
+.tag-BTEC-IT { background: var(--btec-light); color: var(--btec); }
+.tag-General { background: var(--border); color: var(--text-soft); }
+
+/* ─── EMPTY STATE ─────────────────────────── */
+.empty-state {
+text-align: center;
+padding: 52px 24px;
+color: var(--text-soft);
+}
+.empty-state .ei { font-size: 40px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* ══════════════════════════════════════════════
+TO-DO
+══════════════════════════════════════════════ */
+.todo-form-card {
+margin-bottom: 18px;
+}
+.todo-form-row {
+display: grid;
+grid-template-columns: 1fr 160px 150px auto;
+gap: 10px;
+align-items: end;
+}
+@media (max-width: 700px) {
+.todo-form-row {
+grid-template-columns: 1fr 1fr;
+}
+.todo-form-row .todo-task-field { grid-column: 1 / -1; }
+.todo-form-row .todo-add-btn { grid-column: 1 / -1; }
+}
+
+.todo-filters {
+display: flex;
+gap: 6px;
+margin-bottom: 16px;
+flex-wrap: wrap;
+}
+.filter-btn {
+padding: 5px 13px;
+border-radius: 20px;
+border: 1px solid var(--border);
+background: var(--surface);
+font-size: 13px;
+font-family: 'DM Sans', sans-serif;
+cursor: pointer;
+color: var(--text-soft);
+font-weight: 500;
+transition: all 0.15s;
+}
+.filter-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
+.filter-btn:hover:not(.active) { background: var(--bg); }
+
+.todo-list { display: flex; flex-direction: column; gap: 8px; }
+
+.todo-item {
+display: flex;
+align-items: center;
+gap: 12px;
+padding: 13px 16px;
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: 10px;
+transition: opacity 0.2s, box-shadow 0.15s;
+}
+.todo-item:hover { box-shadow: var(--shadow-md); }
+.todo-item.done { opacity: 0.45; }
+
+.todo-check {
+width: 22px;
+height: 22px;
+min-width: 22px;
+border-radius: 50%;
+border: 2px solid var(--border);
+cursor: pointer;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 11px;
+transition: all 0.15s;
+background: var(--surface);
+}
+.todo-item.done .todo-check {
+background: var(--success);
+border-color: var(--success);
+color: #fff;
+}
+
+.todo-text { flex: 1; font-size: 14px; }
+.todo-item.done .todo-text { text-decoration: line-through; }
+
+.todo-meta {
+display: flex;
+gap: 8px;
+align-items: center;
+flex-wrap: wrap;
+justify-content: flex-end;
+}
+.due-badge {
+font-size: 11px;
+font-weight: 500;
+padding: 2px 7px;
+border-radius: 20px;
+background: var(--accent-light);
+color: var(--accent);
+}
+.due-badge.overdue { background: #FEE2E2; color: var(--danger); }
+.due-badge.today { background: #FEF9C3; color: #854D0E; }
+
+/* ══════════════════════════════════════════════
+CALENDAR
+══════════════════════════════════════════════ */
+.cal-header {
+display: flex;
+align-items: center;
+justify-content: space-between;
+margin-bottom: 20px;
+}
+.cal-month-label {
+font-family: 'Syne', sans-serif;
+font-weight: 700;
+font-size: 22px;
+}
+.cal-nav { display: flex; gap: 8px; }
+
+.cal-grid {
+display: grid;
+grid-template-columns: repeat(7, 1fr);
+gap: 4px;
+}
+.cal-day-name {
+text-align: center;
+font-size: 11px;
+font-weight: 600;
+color: var(--text-soft);
+padding: 6px 2px 10px;
+text-transform: uppercase;
+letter-spacing: 0.4px;
+}
+.cal-day {
+min-height: 76px;
+border-radius: 8px;
+padding: 6px;
+background: var(--surface);
+border: 1px solid var(--border);
+cursor: pointer;
+transition: border-color 0.15s, box-shadow 0.15s;
+position: relative;
+}
+.cal-day:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.cal-day.other-month { opacity: 0.28; pointer-events: none; }
+.cal-day.today { border-color: var(--accent); background: #F0FDF8; }
+
+.cal-day-num {
+font-size: 13px;
+font-weight: 500;
+margin-bottom: 5px;
+width: 24px;
+height: 24px;
+display: flex;
+align-items: center;
+justify-content: center;
+border-radius: 50%;
+}
+.cal-day.today .cal-day-num {
+background: var(--accent);
+color: #fff;
+font-size: 12px;
+}
+
+.cal-dots { display: flex; flex-wrap: wrap; gap: 3px; }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.cdot-maths { background: var(--math); }
+.cdot-acct { background: var(--acct); }
+.cdot-todo { background: var(--accent); }
+
+.cal-labels { margin-top: 4px; }
+.cal-label {
+font-size: 9px;
+line-height: 1.3;
+color: var(--text-soft);
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+
+@media (max-width: 600px) {
+.cal-day { min-height: 48px; padding: 4px; }
+.cal-label { display: none; }
+.cal-day-num { font-size: 11px; width: 20px; height: 20px; }
+}
+
+.day-detail { margin-top: 16px; }
+.day-detail-title {
+font-family: 'Syne', sans-serif;
+font-weight: 700;
+font-size: 17px;
+margin-bottom: 14px;
+}
+.day-item {
+padding: 12px 14px;
+background: var(--bg);
+border-radius: 8px;
+margin-bottom: 8px;
+}
+.day-item-label {
+font-size: 10px;
+font-weight: 700;
+text-transform: uppercase;
+letter-spacing: 0.5px;
+color: var(--text-soft);
+margin-bottom: 8px;
+}
+.day-event-name { font-weight: 600; font-size: 14px; }
+.day-event-sub { font-size: 12px; color: var(--text-soft); margin-top: 2px; }
+
+/* ══════════════════════════════════════════════
+EXAMS
+══════════════════════════════════════════════ */
+.exams-grid {
+display: grid;
+grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+gap: 16px;
+}
+@media (max-width: 640px) { .exams-grid { grid-template-columns: 1fr; } }
+
+.exam-card {
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: var(--radius);
+padding: 20px;
+box-shadow: var(--shadow);
+border-top: 3px solid var(--border);
+display: flex;
+flex-direction: column;
+transition: box-shadow 0.15s;
+}
+.exam-card:hover { box-shadow: var(--shadow-md); }
+.exam-card.s-Mathematics { border-top-color: var(--math); }
+.exam-card.s-Accounting { border-top-color: var(--acct); }
+.exam-card.s-BTEC-IT { border-top-color: var(--btec); }
+
+.exam-subj-label {
+font-size: 10px;
+font-weight: 700;
+text-transform: uppercase;
+letter-spacing: 0.6px;
+margin-bottom: 6px;
+}
+.s-Mathematics .exam-subj-label { color: var(--math); }
+.s-Accounting .exam-subj-label { color: var(--acct); }
+.s-BTEC-IT .exam-subj-label { color: var(--btec); }
+
+.exam-name {
+font-family: 'Syne', sans-serif;
+font-weight: 700;
+font-size: 16px;
+line-height: 1.3;
+margin-bottom: 14px;
+}
+
+.exam-info { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.exam-info-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-soft); }
+.exam-info-row strong { color: var(--text); }
+
+.exam-countdown {
+display: flex;
+justify-content: space-between;
+align-items: flex-end;
+margin-top: 16px;
+padding-top: 16px;
+border-top: 1px solid var(--border);
+}
+.cd-num {
+font-family: 'Syne', sans-serif;
+font-weight: 800;
+font-size: 34px;
+line-height: 1;
+}
+.cd-unit { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
+
+.exam-badge {
+padding: 4px 10px;
+border-radius: 20px;
+font-size: 12px;
+font-weight: 600;
+}
+.badge-soon { background: #FEF9C3; color: #854D0E; }
+.badge-upcoming { background: var(--accent-light); color: var(--accent); }
+.badge-past { background: var(--border); color: var(--text-soft); }
+.badge-today { background: #FCE7F3; color: #9D174D; }
+
+/* ══════════════════════════════════════════════
+STUDY TRACKER
+══════════════════════════════════════════════ */
+.tracker-cards {
+display: grid;
+grid-template-columns: repeat(3, 1fr);
+gap: 16px;
+margin-bottom: 24px;
+}
+@media (max-width: 720px) { .tracker-cards { grid-template-columns: 1fr; } }
+
+.subj-card {
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: var(--radius);
+padding: 20px;
+box-shadow: var(--shadow);
+}
+.subj-card-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 14px;
+}
+.subj-card-name {
+font-family: 'Syne', sans-serif;
+font-weight: 700;
+font-size: 15px;
+}
+.target-row {
+display: flex;
+align-items: center;
+gap: 5px;
+font-size: 12px;
+color: var(--text-soft);
+}
+.target-row input {
+width: 54px;
+padding: 4px 8px;
+font-size: 12px;
+}
+
+.hours-total {
+font-family: 'Syne', sans-serif;
+font-weight: 800;
+font-size: 38px;
+line-height: 1;
+margin-bottom: 2px;
+}
+.hours-total span { font-size: 16px; font-weight: 400; color: var(--text-soft); }
+.hours-meta { font-size: 12px; color: var(--text-soft); margin-bottom: 12px; }
+
+.pbar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.pbar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.pf-Mathematics { background: var(--math); }
+.pf-Accounting { background: var(--acct); }
+.pf-BTEC-IT { background: var(--btec); }
+
+.log-form-card { margin-bottom: 24px; }
+.log-form-grid {
+display: grid;
+grid-template-columns: 1fr 1fr 1fr;
+gap: 10px;
+}
+@media (max-width: 600px) { .log-form-grid { grid-template-columns: 1fr 1fr; } }
+
+.history-title {
+font-family: 'Syne', sans-serif;
+font-weight: 700;
+font-size: 20px;
+margin-bottom: 14px;
+}
+
+.log-entry {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 11px 15px;
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: 9px;
+margin-bottom: 8px;
+}
+.log-entry-left { display: flex; flex-direction: column; gap: 2px; }
+.log-entry-subj { font-size: 13px; font-weight: 600; }
+.log-entry-meta { font-size: 12px; color: var(--text-soft); }
+.log-entry-right { display: flex; align-items: center; gap: 10px; }
+.log-hrs {
+font-family: 'Syne', sans-serif;
+font-weight: 700;
+font-size: 18px;
+}
+</style>
+</head>
+<body>
+
+<!-- ─── LOADING OVERLAY ──────────────────── -->
+<div id="loading-overlay">
+  <div class="loader-spinner"></div>
+  <span>Syncing your data…</span>
+</div>
+
+<!-- ─── FIREBASE CONFIG ERROR BANNER ────── -->
+<div id="firebase-error">
+  ⚠️ Firebase is not configured yet. Open <code>index.html</code>, find the <strong>FIREBASE CONFIG</strong> section near the bottom, and paste in your project credentials.
+  <a href="https://console.firebase.google.com/" target="_blank" rel="noopener">Open Firebase Console →</a>
+</div>
+
+<header>
+<div class="header-inner">
+  <div class="logo">Study<em>Planner</em></div>
+  <div class="header-right">
+    <div id="sync-status">
+      <div id="sync-dot"></div>
+      <span id="sync-label">Connecting…</span>
+    </div>
+    <div id="header-date"></div>
+  </div>
+</div>
+</header>
+
+<nav>
+<div class="nav-inner">
+<button class="nav-btn active" onclick="switchTab('todo',this)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+To-Do
+</button>
+<button class="nav-btn" onclick="switchTab('calendar',this)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+Calendar
+</button>
+<button class="nav-btn" onclick="switchTab('exams',this)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+Exams
+</button>
+<button class="nav-btn" onclick="switchTab('tracker',this)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+Study Tracker
+</button>
+</div>
+</nav>
+
+<main>
+
+<!-- ─── TO-DO ─────────────────────────── -->
+<section id="todo" class="section active">
+<h1 class="page-title">To-Do List</h1>
+
+<div class="card todo-form-card">
+<div class="todo-form-row">
+<div class="form-group todo-task-field">
+<label class="form-label">Task</label>
+<input type="text" id="todo-input" placeholder="What needs to be done?" onkeydown="if(event.key==='Enter')addTodo()">
+</div>
+<div class="form-group">
+<label class="form-label">Subject</label>
+<select id="todo-subject">
+<option value="General">General</option>
+<option value="Mathematics">Mathematics</option>
+<option value="Accounting">Accounting</option>
+<option value="BTEC-IT">BTEC IT</option>
+</select>
+</div>
+<div class="form-group">
+<label class="form-label">Due Date</label>
+<input type="date" id="todo-due">
+</div>
+<div class="form-group todo-add-btn">
+<label class="form-label">&nbsp;</label>
+<button class="btn btn-primary" onclick="addTodo()">Add Task</button>
+</div>
+</div>
+</div>
+
+<div class="todo-filters">
+<button class="filter-btn active" onclick="setTodoFilter('all',this)">All</button>
+<button class="filter-btn" onclick="setTodoFilter('active',this)">Active</button>
+<button class="filter-btn" onclick="setTodoFilter('done',this)">Done</button>
+<button class="filter-btn" onclick="setTodoFilter('Mathematics',this)">Mathematics</button>
+<button class="filter-btn" onclick="setTodoFilter('Accounting',this)">Accounting</button>
+<button class="filter-btn" onclick="setTodoFilter('BTEC-IT',this)">BTEC IT</button>
+<button class="filter-btn" onclick="setTodoFilter('General',this)">General</button>
+</div>
+
+<div class="todo-list" id="todo-list"></div>
+</section>
+
+<!-- ─── CALENDAR ──────────────────────── -->
+<section id="calendar" class="section">
+<h1 class="page-title">Calendar</h1>
+
+<div class="card">
+<div class="cal-header">
+<div class="cal-month-label" id="cal-label"></div>
+<div class="cal-nav">
+<button class="btn btn-ghost" onclick="moveMonth(-1)">&#8249;</button>
+<button class="btn btn-ghost" onclick="moveMonth(0)" style="font-size:12px;padding:8px 12px;">Today</button>
+<button class="btn btn-ghost" onclick="moveMonth(1)">&#8250;</button>
+</div>
+</div>
+<div class="cal-grid" id="cal-grid"></div>
+</div>
+
+<div id="day-detail-wrap" style="display:none;" class="day-detail">
+<div class="card">
+<div class="day-detail-title" id="day-detail-title"></div>
+<div id="day-detail-body"></div>
+</div>
+</div>
+</section>
+
+<!-- ─── EXAMS ─────────────────────────── -->
+<section id="exams" class="section">
+<h1 class="page-title">Exam Schedule</h1>
+<div class="exams-grid" id="exams-grid"></div>
+</section>
+
+<!-- ─── TRACKER ───────────────────────── -->
+<section id="tracker" class="section">
+<h1 class="page-title">Study Tracker</h1>
+
+<div class="tracker-cards" id="tracker-cards"></div>
+
+<div class="card log-form-card">
+<h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;margin-bottom:16px;">Log a Session</h3>
+<div class="log-form-grid">
+<div class="form-group">
+<label class="form-label">Subject</label>
+<select id="log-subject">
+<option value="Mathematics">Mathematics</option>
+<option value="Accounting">Accounting</option>
+<option value="BTEC-IT">BTEC IT</option>
+</select>
+</div>
+<div class="form-group">
+<label class="form-label">Hours</label>
+<input type="number" id="log-hours" min="0.25" max="24" step="0.25" placeholder="e.g. 2">
+</div>
+<div class="form-group">
+<label class="form-label">Date</label>
+<input type="date" id="log-date">
+</div>
+<div class="form-group" style="grid-column:1/-1;">
+<label class="form-label">Note (optional)</label>
+<input type="text" id="log-note" placeholder="e.g. Past paper practice, Chapter 4 revision...">
+</div>
+<div style="grid-column:1/-1;">
+<button class="btn btn-primary" onclick="logSession()" style="width:100%;">Log Session</button>
+</div>
+</div>
+</div>
+
+<div>
+<div class="history-title">Session History</div>
+<div id="log-history"></div>
+</div>
+</section>
+
+</main>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+//  FIREBASE CONFIG
+//  ─────────────────────────────────────────────────────────────
+//  HOW TO SET THIS UP (one-time, ~5 minutes):
+//
+//  1. Go to https://console.firebase.google.com/
+//  2. Click "Add project" → give it any name → Continue
+//  3. Disable Google Analytics (not needed) → Create project
+//  4. In the project dashboard, click the </> (Web) icon
+//  5. Register the app with any nickname → click "Continue to console"
+//  6. In the left sidebar go to Build → Firestore Database
+//  7. Click "Create database" → choose "Start in test mode" → Next
+//     (test mode lets you read/write without auth — fine for personal use)
+//  8. Pick any region (e.g. eur3) → Enable
+//  9. Go back to Project Settings (gear icon) → Your apps → SDK setup
+//     → copy the firebaseConfig object values below
+//
+//  PASTE YOUR VALUES HERE ↓
+// ════════════════════════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyAd7mYBd-KGb4Dt5glsiv271iK6ciqLFWI",
+  authDomain:        "studytracker4.firebaseapp.com",
+  projectId:         "studytracker4",
+  storageBucket:     "studytracker4.firebasestorage.app",
+  messagingSenderId: "472350622948",
+  appId:             "1:472350622948:web:766b40c271e068252018f1"
+};
+// ════════════════════════════════════════════════════════════════
+
+// ── Detect unconfigured state ────────────────────────────────────
+const CONFIG_READY = !Object.values(FIREBASE_CONFIG).some(v => v.startsWith('PASTE_'));
+
+if (!CONFIG_READY) {
+  document.getElementById('firebase-error').style.display = 'block';
+  document.getElementById('loading-overlay').classList.add('hidden');
+  setSyncStatus('error', 'Not configured');
+}
+
+// ── Init Firebase ─────────────────────────────────────────────────
+let db, DOC;
+if (CONFIG_READY) {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db  = firebase.firestore();
+  DOC = db.collection('studyplanner').doc('data');
+}
+
+// ════════════════════════════════════════
+// STATE  (populated from Firestore on load)
+// ════════════════════════════════════════
+let todos   = [];
+let logs    = [];
+let targets = { Mathematics: 50, Accounting: 50, 'BTEC-IT': 50 };
+
+let todoFilter = 'all';
+let calYear, calMonth;
+let activeTab = 'todo';
+let firstLoad = true;
+
+const NOW       = new Date();
+const TODAY_STR = toDateStr(NOW);
+
+const MONTHS   = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+const EXAMS = [
+  {subject:'Accounting',  name:'Accounting ADV — Paper 1',    date:'2026-05-22', start:'09:00', end:'12:00', room:'EG14', seat:'A5'},
+  {subject:'Accounting',  name:'Accounting ADV — Paper 2',    date:'2026-06-01', start:'09:00', end:'12:00', room:'BG01', seat:'A1'},
+  {subject:'Mathematics', name:'Mathematics ADV — Paper 1',   date:'2026-06-03', start:'13:00', end:'15:00', room:'EG14', seat:'C8'},
+  {subject:'Mathematics', name:'Mathematics ADV — Paper 2',   date:'2026-06-11', start:'13:00', end:'15:00', room:'', seat:''},
+  {subject:'Mathematics', name:'Mathematics ADV — Paper 3',   date:'2026-06-18', start:'13:00', end:'15:00', room:'', seat:''},
+];
+
+// ════════════════════════════════════════
+// SYNC STATUS INDICATOR
+// ════════════════════════════════════════
+function setSyncStatus(state, label) {
+  const el  = document.getElementById('sync-status');
+  const lbl = document.getElementById('sync-label');
+  el.className = state;
+  lbl.textContent = label || { syncing:'Saving…', saved:'Synced', error:'Offline', '':'Connecting…' }[state] || label;
+}
+
+// ════════════════════════════════════════
+// FIRESTORE  – real-time listener
+// ════════════════════════════════════════
+if (CONFIG_READY) {
+  DOC.onSnapshot(snap => {
+    if (snap.exists) {
+      const d = snap.data();
+      todos   = d.todos   || [];
+      logs    = d.logs    || [];
+      targets = d.targets || { Mathematics: 50, Accounting: 50, 'BTEC-IT': 50 };
+    }
+    // First load: hide overlay and boot the UI
+    if (firstLoad) {
+      firstLoad = false;
+      initCalendar();
+      renderAll();
+      document.getElementById('loading-overlay').classList.add('hidden');
+      setSyncStatus('saved');
+    } else {
+      // Remote change arrived — refresh UI silently
+      renderAll();
+      setSyncStatus('saved');
+    }
+  }, err => {
+    console.error('Firestore error:', err);
+    setSyncStatus('error', 'Error — check console');
+    if (firstLoad) {
+      firstLoad = false;
+      document.getElementById('loading-overlay').classList.add('hidden');
+    }
+  });
+}
+
+// Write the whole data object back to Firestore
+async function saveAll() {
+  if (!CONFIG_READY) return;
+  setSyncStatus('syncing');
+  try {
+    await DOC.set({ todos, logs, targets }, { merge: true });
+    setSyncStatus('saved');
+  } catch (err) {
+    console.error('Save failed:', err);
+    setSyncStatus('error', 'Save failed');
+  }
+}
+
+// ════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toDateStr(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function parseDate(s){ return new Date(s + 'T00:00:00'); }
+function diffDays(dateStr){
+  const d = parseDate(dateStr);
+  const t = new Date(); t.setHours(0,0,0,0);
+  return Math.round((d - t) / 86400000);
+}
+
+// ════════════════════════════════════════
+// RENDER ALL (re-renders whatever is visible)
+// ════════════════════════════════════════
+function renderAll() {
+  renderTodos();
+  if (activeTab === 'calendar') renderCalendar();
+  if (activeTab === 'exams')    renderExams();
+  if (activeTab === 'tracker')  renderTracker();
+}
+
+// ════════════════════════════════════════
+// TABS
+// ════════════════════════════════════════
+function switchTab(tab, btn){
+  activeTab = tab;
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(tab).classList.add('active');
+  btn.classList.add('active');
+  if (tab === 'calendar') renderCalendar();
+  if (tab === 'exams')    renderExams();
+  if (tab === 'tracker')  renderTracker();
+}
+
+// ════════════════════════════════════════
+// TO-DO
+// ════════════════════════════════════════
+function addTodo(){
+  const text = document.getElementById('todo-input').value.trim();
+  if (!text) return;
+  todos.unshift({
+    id: Date.now(),
+    text,
+    subject: document.getElementById('todo-subject').value,
+    dueDate: document.getElementById('todo-due').value,
+    completed: false
+  });
+  document.getElementById('todo-input').value = '';
+  document.getElementById('todo-due').value   = '';
+  renderTodos();
+  saveAll();
+}
+
+function toggleTodo(id){
+  const t = todos.find(x => x.id === id);
+  if (t) t.completed = !t.completed;
+  renderTodos();
+  saveAll();
+}
+
+function deleteTodo(id){
+  todos = todos.filter(x => x.id !== id);
+  renderTodos();
+  saveAll();
+}
+
+function setTodoFilter(f, btn){
+  todoFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTodos();
+}
+
+function renderTodos(){
+  let list = [...todos];
+  if (todoFilter === 'active') list = list.filter(t => !t.completed);
+  else if (todoFilter === 'done') list = list.filter(t => t.completed);
+  else if (todoFilter !== 'all') list = list.filter(t => t.subject === todoFilter);
+
+  const el = document.getElementById('todo-list');
+  if (!list.length){
+    el.innerHTML = `<div class="empty-state"><div class="ei">📝</div><p>No tasks here yet. Add one above!</p></div>`;
+    return;
+  }
+
+  el.innerHTML = list.map(t => {
+    let dueBadge = '';
+    if (t.dueDate){
+      const d = diffDays(t.dueDate);
+      let cls = '', label = '';
+      if (d < 0)      { cls = 'overdue'; label = `${-d}d overdue`; }
+      else if (d === 0){ cls = 'today';   label = 'Today'; }
+      else if (d === 1){ cls = '';        label = 'Tomorrow'; }
+      else             { cls = '';        label = `${d}d left`; }
+      if (!t.completed) dueBadge = `<span class="due-badge ${cls}">${label}</span>`;
+    }
+    const subj = t.subject.replace(' ','-');
+    return `
+<div class="todo-item ${t.completed?'done':''}">
+<div class="todo-check" onclick="toggleTodo(${t.id})" title="Mark ${t.completed?'incomplete':'complete'}">
+${t.completed ? '✓' : ''}
+</div>
+<span class="todo-text">${esc(t.text)}</span>
+<div class="todo-meta">
+${dueBadge}
+<span class="subject-tag tag-${subj}">${t.subject.replace('-',' ')}</span>
+<button class="btn-icon" onclick="deleteTodo(${t.id})" title="Delete">✕</button>
+</div>
+</div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════
+// CALENDAR
+// ════════════════════════════════════════
+function initCalendar(){
+  calYear  = NOW.getFullYear();
+  calMonth = NOW.getMonth();
+}
+
+function moveMonth(dir){
+  if (dir === 0){ calYear = NOW.getFullYear(); calMonth = NOW.getMonth(); }
+  else {
+    calMonth += dir;
+    if (calMonth > 11){ calMonth = 0; calYear++; }
+    if (calMonth < 0) { calMonth = 11; calYear--; }
+  }
+  renderCalendar();
+}
+
+function renderCalendar(){
+  document.getElementById('cal-label').textContent = `${MONTHS[calMonth]} ${calYear}`;
+
+  const examMap = {}, todoMap = {};
+  EXAMS.forEach(e => { (examMap[e.date] = examMap[e.date] || []).push(e); });
+  todos.filter(t => t.dueDate && !t.completed).forEach(t => { (todoMap[t.dueDate] = todoMap[t.dueDate] || []).push(t); });
+
+  const firstDay     = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth  = new Date(calYear, calMonth+1, 0).getDate();
+  const daysInPrev   = new Date(calYear, calMonth, 0).getDate();
+  const totalCells   = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+
+  let html = DAY_NAMES.map(d => `<div class="cal-day-name">${d}</div>`).join('');
+
+  for (let i = firstDay - 1; i >= 0; i--){
+    html += `<div class="cal-day other-month"><div class="cal-day-num">${daysInPrev - i}</div></div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++){
+    const ds      = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = ds === TODAY_STR;
+    const exs     = examMap[ds] || [];
+    const tds     = todoMap[ds] || [];
+
+    let dots = '';
+    exs.forEach(e => {
+      dots += `<div class="cal-dot ${e.subject==='Mathematics'?'cdot-maths':'cdot-acct'}"></div>`;
+    });
+    if (tds.length) dots += `<div class="cal-dot cdot-todo"></div>`;
+
+    let labels = exs.slice(0,2).map(e => `<div class="cal-label">${e.name.replace('ADV — ','')}</div>`).join('');
+
+    html += `
+<div class="cal-day${isToday?' today':''}" onclick="showDayDetail('${ds}')">
+<div class="cal-day-num">${d}</div>
+<div class="cal-dots">${dots}</div>
+<div class="cal-labels">${labels}</div>
+</div>`;
+  }
+
+  const remainder = totalCells - firstDay - daysInMonth;
+  for (let d = 1; d <= remainder; d++){
+    html += `<div class="cal-day other-month"><div class="cal-day-num">${d}</div></div>`;
+  }
+
+  document.getElementById('cal-grid').innerHTML = html;
+  document.getElementById('day-detail-wrap').style.display = 'none';
+}
+
+function showDayDetail(ds){
+  const wrap  = document.getElementById('day-detail-wrap');
+  const title = document.getElementById('day-detail-title');
+  const body  = document.getElementById('day-detail-body');
+
+  const d = parseDate(ds);
+  title.textContent = d.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+  const exs = EXAMS.filter(e => e.date === ds);
+  const tds = todos.filter(t => t.dueDate === ds && !t.completed);
+
+  let html = '';
+  if (exs.length){
+    html += `<div class="day-item"><div class="day-item-label">Exams</div>`;
+    exs.forEach(e => {
+      html += `
+<div style="margin-bottom:8px;">
+<div class="day-event-name">${esc(e.name)}</div>
+<div class="day-event-sub">
+${e.start} – ${e.end}
+${e.room ? ` &middot; Room <strong>${e.room}</strong>` : ''}
+${e.seat ? ` &middot; Seat <strong>${e.seat}</strong>` : ''}
+${!e.room && !e.seat ? ' &middot; Room &amp; seat TBA' : ''}
+</div>
+</div>`;
+    });
+    html += `</div>`;
+  }
+  if (tds.length){
+    html += `<div class="day-item"><div class="day-item-label">Tasks Due</div>`;
+    tds.forEach(t => {
+      html += `<div class="day-event-name" style="margin-bottom:6px;">${esc(t.text)}</div>`;
+    });
+    html += `</div>`;
+  }
+  if (!exs.length && !tds.length){
+    html = `<p style="color:var(--text-soft);font-size:14px;">Nothing scheduled for this day.</p>`;
+  }
+
+  body.innerHTML = html;
+  wrap.style.display = 'block';
+  wrap.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+// ════════════════════════════════════════
+// EXAMS
+// ════════════════════════════════════════
+function renderExams(){
+  document.getElementById('exams-grid').innerHTML = EXAMS.map(e => {
+    const diff = diffDays(e.date);
+    let badge, badgeClass;
+    if (diff < 0)       { badge = 'Complete';  badgeClass = 'badge-past'; }
+    else if (diff === 0){ badge = 'Today!';    badgeClass = 'badge-today'; }
+    else if (diff <= 14){ badge = 'Coming up'; badgeClass = 'badge-soon'; }
+    else                { badge = 'Upcoming';  badgeClass = 'badge-upcoming'; }
+
+    const cdNum  = diff < 0 ? '✓' : diff === 0 ? '!' : diff;
+    const cdUnit = diff <= 0 ? (diff === 0 ? 'today' : 'done') : 'days to go';
+
+    const fDate  = parseDate(e.date).toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric'});
+    const sClass = `s-${e.subject}`;
+
+    return `
+<div class="exam-card ${sClass}">
+<div class="exam-subj-label">${e.subject}</div>
+<div class="exam-name">${e.name}</div>
+<div class="exam-info">
+<div class="exam-info-row">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+<strong>${fDate}</strong>
+</div>
+<div class="exam-info-row">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+${e.start} – ${e.end}
+</div>
+${e.room ? `<div class="exam-info-row">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+Room <strong>${e.room}</strong>&nbsp;&middot;&nbsp;Seat <strong>${e.seat}</strong>
+</div>` : `<div class="exam-info-row" style="font-style:italic;color:var(--text-soft);">Room &amp; seat TBA</div>`}
+</div>
+<div class="exam-countdown">
+<div>
+<div class="cd-num">${cdNum}</div>
+<div class="cd-unit">${cdUnit}</div>
+</div>
+<span class="exam-badge ${badgeClass}">${badge}</span>
+</div>
+</div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════
+// STUDY TRACKER
+// ════════════════════════════════════════
+const SUBJECTS = [
+  { key:'Mathematics', label:'Mathematics', fillCls:'pf-Mathematics' },
+  { key:'Accounting',  label:'Accounting',  fillCls:'pf-Accounting'  },
+  { key:'BTEC-IT',     label:'BTEC IT',     fillCls:'pf-BTEC-IT'     },
+];
+
+function totalHours(subject){
+  return logs.filter(l => l.subject === subject).reduce((s,l) => s + l.hours, 0);
+}
+
+function updateTarget(subject, val){
+  const n = parseFloat(val);
+  if (n > 0){ targets[subject] = n; saveAll(); renderTracker(); }
+}
+
+function logSession(){
+  const subject = document.getElementById('log-subject').value;
+  const hours   = parseFloat(document.getElementById('log-hours').value);
+  const date    = document.getElementById('log-date').value || TODAY_STR;
+  const note    = document.getElementById('log-note').value.trim();
+
+  if (!hours || hours <= 0){ alert('Please enter a valid number of hours.'); return; }
+
+  logs.unshift({ id: Date.now(), subject, hours, date, note });
+  document.getElementById('log-hours').value = '';
+  document.getElementById('log-note').value  = '';
+  saveAll(); renderTracker();
+}
+
+function deleteLog(id){
+  logs = logs.filter(l => l.id !== id);
+  saveAll(); renderTracker();
+}
+
+function renderTracker(){
+  document.getElementById('tracker-cards').innerHTML = SUBJECTS.map(s => {
+    const total  = totalHours(s.key);
+    const target = targets[s.key] || 50;
+    const pct    = Math.min(100, (total / target) * 100).toFixed(0);
+    return `
+<div class="subj-card">
+<div class="subj-card-header">
+<div class="subj-card-name">${s.label}</div>
+<div class="target-row">
+Goal: <input type="number" value="${target}" min="1" max="999" onchange="updateTarget('${s.key}',this.value)"> hrs
+</div>
+</div>
+<div class="hours-total">${total % 1 === 0 ? total : total.toFixed(1)}<span>h</span></div>
+<div class="hours-meta">${pct}% of ${target}h goal · ${Math.max(0, target - total).toFixed(1)}h remaining</div>
+<div class="pbar"><div class="pbar-fill ${s.fillCls}" style="width:${pct}%"></div></div>
+</div>`;
+  }).join('');
+
+  const hist = document.getElementById('log-history');
+  if (!logs.length){
+    hist.innerHTML = `<div class="empty-state"><div class="ei">📚</div><p>No sessions logged yet. Track your first session above!</p></div>`;
+    return;
+  }
+  hist.innerHTML = logs.map(l => {
+    const d       = parseDate(l.date);
+    const dateStr = d.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric'});
+    return `
+<div class="log-entry">
+<div class="log-entry-left">
+<div class="log-entry-subj">${l.subject.replace('-',' ')}${l.note ? ` <span style="font-weight:400;color:var(--text-soft)">— ${esc(l.note)}</span>` : ''}</div>
+<div class="log-entry-meta">${dateStr}</div>
+</div>
+<div class="log-entry-right">
+<div class="log-hrs">${l.hours}h</div>
+<button class="btn-icon" onclick="deleteLog(${l.id})" title="Remove">✕</button>
+</div>
+</div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════
+document.getElementById('header-date').textContent =
+  NOW.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+document.getElementById('log-date').value = TODAY_STR;
+
+// If Firebase isn't configured, still boot the UI (empty state)
+if (!CONFIG_READY) {
+  initCalendar();
+  renderAll();
+}
+</script>
+</body>
+</html>
